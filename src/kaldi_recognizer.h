@@ -23,6 +23,7 @@
 #include "feat/feature-mfcc.h"
 #include "lat/kaldi-lattice.h"
 #include "lat/word-align-lattice.h"
+#include "lat/compose-lattice-pruned.h"
 #include "nnet3/am-nnet-simple.h"
 #include "nnet3/nnet-am-decodable-simple.h"
 #include "nnet3/nnet-utils.h"
@@ -42,37 +43,59 @@ enum KaldiRecognizerState {
 class KaldiRecognizer {
     public:
         KaldiRecognizer(Model *model, float sample_frequency);
-        KaldiRecognizer(Model *model, SpkModel *spk_model, float sample_frequency);
+        KaldiRecognizer(Model *model, float sample_frequency, SpkModel *spk_model);
         KaldiRecognizer(Model *model, float sample_frequency, char const *grammar);
         ~KaldiRecognizer();
+        void SetMaxAlternatives(int max_alternatives);
+        void SetSpkModel(SpkModel *spk_model);
+        void SetWords(bool words);
         bool AcceptWaveform(const char *data, int len);
         bool AcceptWaveform(const short *sdata, int len);
         bool AcceptWaveform(const float *fdata, int len);
         const char* Result();
         const char* FinalResult();
         const char* PartialResult();
+        void Reset();
 
     private:
         void InitState();
+        void PldaScoring(Vector<BaseFloat> &out_xvector);
         void InitRescoring();
         void CleanUp();
         void UpdateSilenceWeights();
         bool AcceptWaveform(Vector<BaseFloat> &wdata);
         bool GetSpkVector(Vector<BaseFloat> &out_xvector, int *frames);
         const char *GetResult();
+        const char *StoreEmptyReturn();
         const char *StoreReturn(const string &res);
+        const char *MbrResult(CompactLattice &clat);
+        const char *NbestResult(CompactLattice &clat);
 
-        Model *model_;
-        SingleUtteranceNnet3Decoder *decoder_;
-        fst::LookaheadFst<fst::StdArc, int32> *decode_fst_;
-        fst::StdVectorFst *g_fst_; // dynamically constructed grammar
-        OnlineNnet2FeaturePipeline *feature_pipeline_;
-        OnlineSilenceWeighting *silence_weighting_;
+        Model *model_ = nullptr;
+        SingleUtteranceNnet3Decoder *decoder_ = nullptr;
+        fst::LookaheadFst<fst::StdArc, int32> *decode_fst_ = nullptr;
+        fst::StdVectorFst *g_fst_ = nullptr; // dynamically constructed grammar
+        OnlineNnet2FeaturePipeline *feature_pipeline_ = nullptr;
+        OnlineSilenceWeighting *silence_weighting_ = nullptr;
 
-        SpkModel *spk_model_;
-        OnlineBaseFeature *spk_feature_;
+        // Speaker identification
+        SpkModel *spk_model_ = nullptr;
+        OnlineBaseFeature *spk_feature_ = nullptr;
+        Vector <BaseFloat> xvector_result;
+        std::map<std::string, BaseFloat> scores_;
 
-        fst::ArcMapFst<fst::StdArc, kaldi::LatticeArc, fst::StdToLatticeMapper<kaldi::BaseFloat> > *lm_fst_;
+        // Rescoring
+        fst::ArcMapFst<fst::StdArc, kaldi::LatticeArc, fst::StdToLatticeMapper<kaldi::BaseFloat> > *lm_fst_ = nullptr;
+
+        // RNNLM rescoring
+        kaldi::rnnlm::RnnlmComputeStateInfo *info = nullptr;
+        fst::ScaleDeterministicOnDemandFst *lm_to_subtract_det_scale = nullptr;
+        fst::BackoffDeterministicOnDemandFst<fst::StdArc> *lm_to_subtract_det_backoff = nullptr;
+        kaldi::rnnlm::KaldiRnnlmDeterministicFst* lm_to_add_orig = nullptr;
+        fst::DeterministicOnDemandFst<fst::StdArc> *lm_to_add = nullptr;
+
+        int max_alternatives_ = 0; // Disable alternatives by default
+        bool words_ = false;
 
         float sample_frequency_;
         int32 frame_offset_;

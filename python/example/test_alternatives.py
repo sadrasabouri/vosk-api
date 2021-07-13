@@ -4,6 +4,7 @@ from vosk import Model, KaldiRecognizer, SetLogLevel
 import sys
 import os
 import wave
+import json
 
 SetLogLevel(0)
 
@@ -18,6 +19,7 @@ if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE
 
 model = Model("model")
 rec = KaldiRecognizer(model, wf.getframerate())
+rec.SetMaxAlternatives(10)
 rec.SetWords(True)
 
 while True:
@@ -25,8 +27,8 @@ while True:
     if len(data) == 0:
         break
     if rec.AcceptWaveform(data):
-        print(rec.Result())
+        print(json.loads(rec.Result()))
     else:
-        print(rec.PartialResult())
+        print(json.loads(rec.PartialResult()))
 
-print(rec.FinalResult())
+print(json.loads(rec.FinalResult()))
